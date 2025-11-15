@@ -34,17 +34,25 @@ def threaded_search(file_list, keywords, num_threads=4):
     for f in file_list:
         queue.put(f)
 
-    #lock для синхронізації доступу до results
+    # lock для синхронізації доступу до results
     lock = threading.Lock()
 
     def worker():
         while not queue.empty():
-            filepath = queue.get()
-            found = search_in_file(filepath, keywords)
-            with lock:
-                for word, files in found.items():
-                    results[word].extend(files)
-            queue.task_done()
+            try:
+                filepath = queue.get_nowait()
+            except Exception:
+                break  # черга порожня
+
+            try:
+                found = search_in_file(filepath, keywords)
+                with lock:
+                    for word, files in found.items():
+                        results[word].extend(files)
+            except Exception as e:
+                print(f"[Помилка у потоці] помилка при обробці файлу {filepath}: {e}")
+            finally:
+                queue.task_done()
 
     threads = []
     for _ in range(num_threads):
@@ -65,19 +73,25 @@ def threaded_search(file_list, keywords, num_threads=4):
 # -------------------------------
 def process_worker(file_chunk, keywords, queue):
     local_results = {word: [] for word in keywords}
-    for filepath in file_chunk:
-        found = search_in_file(filepath, keywords)
-        for word, files in found.items():
-            local_results[word].extend(files)
-    queue.put(local_results)
+    try:
+        for filepath in file_chunk:
+            found = search_in_file(filepath, keywords)
+            for word, files in found.items():
+                local_results[word].extend(files)
+    except Exception as e:
+        print(f"[Помилка у процесі] Виникла проблема під час обробки: {e}")
+    finally:
+        queue.put(local_results)
+
 
 # num_processes - кількість процесів для створення
 def multiprocessing_search(file_list, keywords, num_processes=4):
     results = {word: [] for word in keywords}
-    # Розбиваємо список файлів на частини для кожного процесу
+
+    # Розбиваємо список файлів на рівні частини, але без додаткової логіки
+    # все просто — як у твоєму коді
     chunk_size = max(1, len(file_list) // num_processes)
     chunks = [file_list[i:i + chunk_size] for i in range(0, len(file_list), chunk_size)]
-    #print(f"Chunks: {chunks}")
 
     queue = multiprocessing.Queue()
     processes = []
@@ -118,7 +132,7 @@ if __name__ == "__main__":
     
     keywords = input("Введіть ключові слова для пошуку (через кому): ").split(',')
     keywords = [k.strip() for k in keywords if k.strip()]
-    #print(f"Шукаємо ключові слова: {keywords}")
+    # print(f"Шукаємо ключові слова: {keywords}")
 
 
 
